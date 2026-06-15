@@ -1,0 +1,1001 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>JSONL Visualizer</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f6f7f9;
+      --panel: #ffffff;
+      --panel-2: #eef2f6;
+      --text: #17202a;
+      --muted: #687382;
+      --line: #d8dee7;
+      --focus: #2563eb;
+      --bad: #b42318;
+      --bad-bg: #fff1f0;
+      --shadow: 0 1px 2px rgba(18, 25, 38, 0.08);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      height: 100%;
+    }
+
+    body {
+      margin: 0;
+      overflow: hidden;
+      background: var(--bg);
+      color: var(--text);
+      font-size: 14px;
+    }
+
+    button,
+    input {
+      font: inherit;
+    }
+
+    .app {
+      display: grid;
+      grid-template-rows: 56px minmax(0, 1fr);
+      height: 100vh;
+      height: 100dvh;
+      overflow: hidden;
+    }
+
+    .topbar {
+      display: grid;
+      grid-template-columns: auto auto minmax(160px, 1fr) auto;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 14px;
+      background: var(--panel);
+      border-bottom: 1px solid var(--line);
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 16px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .file-button,
+    .clear-button {
+      height: 36px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--panel);
+      color: var(--text);
+      padding: 0 12px;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    .file-button {
+      background: #17324d;
+      border-color: #17324d;
+      color: #fff;
+    }
+
+    .clear-button:disabled {
+      color: #9aa4b2;
+      cursor: default;
+    }
+
+    .file-input {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .search {
+      width: 100%;
+      height: 36px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--panel-2);
+      color: var(--text);
+      padding: 0 12px;
+      min-width: 0;
+    }
+
+    .search:focus,
+    .file-button:focus-visible,
+    .clear-button:focus-visible,
+    .entry:focus-visible {
+      outline: 2px solid var(--focus);
+      outline-offset: 2px;
+    }
+
+    .stats {
+      color: var(--muted);
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }
+
+    .main {
+      display: grid;
+      grid-template-columns: minmax(260px, 36%) minmax(0, 1fr);
+      gap: 1px;
+      min-height: 0;
+      overflow: hidden;
+      background: var(--line);
+    }
+
+    .pane {
+      min-height: 0;
+      overflow: hidden;
+      background: var(--panel);
+    }
+
+    .list-pane {
+      display: grid;
+      grid-template-rows: minmax(0, 1fr);
+      min-height: 0;
+    }
+
+    .entries {
+      min-height: 0;
+      overflow: auto;
+      padding: 8px 0;
+    }
+
+    .entry {
+      display: grid;
+      grid-template-columns: 22px minmax(0, 1fr);
+      gap: 4px;
+      width: 100%;
+      min-height: 32px;
+      padding: 4px 10px 4px 18px;
+      border: 0;
+      background: transparent;
+      color: inherit;
+      text-align: left;
+      cursor: pointer;
+      position: relative;
+    }
+
+    .entry:hover {
+      background: #f7fafc;
+    }
+
+    .entry.is-active {
+      background: #e9f1ff;
+      box-shadow: inset 3px 0 0 var(--focus);
+    }
+
+    .entry.has-error {
+      background: var(--bad-bg);
+    }
+
+    .entry.has-error.is-active {
+      box-shadow: inset 3px 0 0 var(--bad);
+    }
+
+    .entry::before {
+      content: "";
+      position: absolute;
+      left: 10px;
+      top: -8px;
+      bottom: 16px;
+      width: 1px;
+      background: var(--line);
+    }
+
+    .entry:first-child::before {
+      top: 16px;
+    }
+
+    .tree-branch {
+      position: relative;
+      height: 100%;
+      min-height: 24px;
+    }
+
+    .tree-branch::before {
+      content: "";
+      position: absolute;
+      left: -8px;
+      top: 50%;
+      width: 18px;
+      height: 1px;
+      background: var(--line);
+    }
+
+    .tree-icon {
+      position: absolute;
+      left: 6px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 16px;
+      color: #697586;
+      font-family: "Apple Symbols", "Segoe UI Symbol", "Noto Sans Symbols 2", "Noto Sans Symbols", sans-serif;
+      font-size: 15px;
+      line-height: 1;
+      text-align: center;
+    }
+
+    .has-content .tree-icon {
+      color: #2563eb;
+    }
+
+    .has-error .tree-icon {
+      color: var(--bad);
+    }
+
+    .entry-content {
+      min-width: 0;
+      align-self: center;
+    }
+
+    .entry-title {
+      display: block;
+      overflow: hidden;
+      color: var(--text);
+      font-weight: 650;
+      line-height: 1.25;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .entry-meta {
+      display: block;
+      overflow: hidden;
+      margin-top: 2px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.25;
+      font-variant-numeric: tabular-nums;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .detail-pane {
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr);
+      min-width: 0;
+    }
+
+    .detail-header {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 12px;
+      align-items: center;
+      min-height: 52px;
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .detail-title {
+      overflow: hidden;
+      margin: 0;
+      font-size: 15px;
+      font-weight: 700;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .detail-line {
+      color: var(--muted);
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }
+
+    .detail-body {
+      min-height: 0;
+      overflow: auto;
+      padding: 14px;
+    }
+
+    .empty {
+      display: grid;
+      place-items: center;
+      min-height: 100%;
+      padding: 18px;
+      color: var(--muted);
+      text-align: center;
+    }
+
+    .drop-target {
+      border: 1px dashed #9aa4b2;
+      border-radius: 8px;
+      padding: 22px;
+      background: #fbfcfe;
+      box-shadow: var(--shadow);
+      color: var(--text);
+      cursor: pointer;
+    }
+
+    .drop-target.is-dragging {
+      border-color: var(--focus);
+      background: #edf4ff;
+    }
+
+    .drop-target strong {
+      display: block;
+      font-size: 15px;
+    }
+
+    .drop-target span {
+      display: block;
+      margin-top: 6px;
+      color: var(--muted);
+    }
+
+    .field-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+      gap: 8px;
+      margin-bottom: 14px;
+    }
+
+    .field {
+      min-width: 0;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 8px;
+      background: #fbfcfe;
+    }
+
+    .field-key {
+      display: block;
+      overflow: hidden;
+      color: var(--muted);
+      font-size: 12px;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .field-value {
+      display: block;
+      overflow: hidden;
+      margin-top: 4px;
+      color: var(--text);
+      font-weight: 650;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    pre {
+      margin: 0;
+      padding: 14px;
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #101820;
+      color: #eaf0f6;
+      line-height: 1.45;
+      tab-size: 2;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .content-view {
+      overflow: hidden;
+      margin-bottom: 14px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #ffffff;
+    }
+
+    .content-label {
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 650;
+    }
+
+    .markdown {
+      max-width: 900px;
+      padding: 16px 18px;
+      color: var(--text);
+      line-height: 1.55;
+    }
+
+    .markdown > :first-child {
+      margin-top: 0;
+    }
+
+    .markdown > :last-child {
+      margin-bottom: 0;
+    }
+
+    .markdown h1,
+    .markdown h2,
+    .markdown h3,
+    .markdown h4,
+    .markdown h5,
+    .markdown h6 {
+      margin: 18px 0 8px;
+      line-height: 1.25;
+    }
+
+    .markdown h1 {
+      font-size: 22px;
+    }
+
+    .markdown h2 {
+      font-size: 18px;
+    }
+
+    .markdown h3 {
+      font-size: 16px;
+    }
+
+    .markdown p,
+    .markdown ul,
+    .markdown ol,
+    .markdown blockquote,
+    .markdown pre {
+      margin: 0 0 12px;
+    }
+
+    .markdown ul,
+    .markdown ol {
+      padding-left: 24px;
+    }
+
+    .markdown li + li {
+      margin-top: 4px;
+    }
+
+    .markdown blockquote {
+      border-left: 3px solid var(--line);
+      padding-left: 12px;
+      color: #3f4a59;
+    }
+
+    .markdown code {
+      border-radius: 4px;
+      background: #eef2f6;
+      padding: 1px 4px;
+      color: #17202a;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.94em;
+    }
+
+    .markdown pre {
+      background: #f5f7fa;
+      color: #17202a;
+    }
+
+    .markdown pre code {
+      display: block;
+      padding: 0;
+      background: transparent;
+      white-space: pre-wrap;
+    }
+
+    .markdown hr {
+      margin: 16px 0;
+      border: 0;
+      border-top: 1px solid var(--line);
+    }
+
+    .error-text {
+      color: var(--bad);
+      font-weight: 650;
+    }
+
+    @media (max-width: 760px) {
+      .app {
+        grid-template-rows: auto minmax(0, 1fr);
+      }
+
+      .topbar {
+        grid-template-columns: 1fr auto;
+      }
+
+      h1,
+      .search,
+      .stats {
+        grid-column: 1 / -1;
+      }
+
+      .main {
+        grid-template-columns: 1fr;
+        grid-template-rows: minmax(220px, 42vh) minmax(0, 1fr);
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <h1>JSONL Visualizer</h1>
+      <label class="file-button" for="fileInput">Open .jsonl</label>
+      <input id="searchInput" class="search" type="search" placeholder="Filter" autocomplete="off" disabled>
+      <div class="stats" id="stats">0 rows</div>
+      <input id="fileInput" class="file-input" type="file" accept=".jsonl,.ndjson,application/json,text/plain">
+    </header>
+
+    <main class="main">
+      <section class="pane list-pane" aria-label="Rows">
+        <div id="entries" class="entries">
+          <div class="empty">
+            <label id="dropTarget" class="drop-target" for="fileInput">
+              <strong>Drop .jsonl file</strong>
+              <span>or open one</span>
+            </label>
+          </div>
+        </div>
+      </section>
+
+      <section class="pane detail-pane" aria-label="Selected row">
+        <div class="detail-header">
+          <h2 id="detailTitle" class="detail-title">No row selected</h2>
+          <div id="detailLine" class="detail-line"></div>
+        </div>
+        <div id="detailBody" class="detail-body">
+          <div class="empty">Open a file</div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    const fileInput = document.getElementById("fileInput");
+    const searchInput = document.getElementById("searchInput");
+    const entriesEl = document.getElementById("entries");
+    const statsEl = document.getElementById("stats");
+    const detailTitleEl = document.getElementById("detailTitle");
+    const detailLineEl = document.getElementById("detailLine");
+    const detailBodyEl = document.getElementById("detailBody");
+    let rows = [];
+    let filteredRows = [];
+    let selectedId = null;
+
+    fileInput.addEventListener("change", () => {
+      const file = fileInput.files && fileInput.files[0];
+      if (file) loadFile(file);
+    });
+
+    searchInput.addEventListener("input", render);
+
+    document.addEventListener("dragover", (event) => {
+      event.preventDefault();
+      setDragging(true);
+    });
+
+    document.addEventListener("dragleave", (event) => {
+      if (!event.relatedTarget) setDragging(false);
+    });
+
+    document.addEventListener("drop", (event) => {
+      event.preventDefault();
+      setDragging(false);
+      const file = event.dataTransfer.files && event.dataTransfer.files[0];
+      if (file) loadFile(file);
+    });
+
+    function loadFile(file) {
+      const reader = new FileReader();
+      reader.onload = () => {
+        rows = parseJsonl(String(reader.result || ""));
+        selectedId = rows[0] ? rows[0].id : null;
+        searchInput.value = "";
+        searchInput.disabled = rows.length === 0;
+        render();
+      };
+      reader.readAsText(file);
+    }
+
+    function parseJsonl(text) {
+      return text
+        .split(/\r?\n/)
+        .map((raw, index) => ({ raw, line: index + 1 }))
+        .filter((line) => line.raw.trim().length > 0)
+        .map((line, index) => {
+          try {
+            const data = JSON.parse(line.raw);
+            const readableContent = findReadableContent(data);
+            return {
+              id: index,
+              line: line.line,
+              raw: line.raw,
+              data,
+              hasReadableContent: Boolean(readableContent),
+              title: `Line ${line.line}`,
+              meta: makeMeta(data),
+              searchable: normalizeSearch(`${line.raw} line ${line.line} ${makeMeta(data)}`)
+            };
+          } catch (error) {
+            return {
+              id: index,
+              line: line.line,
+              raw: line.raw,
+              data: null,
+              error: error.message,
+              title: `Line ${line.line}`,
+              meta: line.raw,
+              searchable: normalizeSearch(`${line.raw} line ${line.line} invalid json ${error.message}`)
+            };
+          }
+        });
+    }
+
+    function makeMeta(value) {
+      if (!value || typeof value !== "object") return typeof value;
+      if (Array.isArray(value)) return `${value.length} items`;
+      const keys = Object.keys(value);
+      return keys.slice(0, 6).join(", ") + (keys.length > 6 ? ` +${keys.length - 6}` : "");
+    }
+
+    function toPreview(value) {
+      if (typeof value === "string") return value;
+      if (Array.isArray(value)) return value.map(toPreview).filter(Boolean).join(" ");
+      if (value && typeof value === "object") {
+        if (typeof value.text === "string") return value.text;
+        if (typeof value.content === "string") return value.content;
+        return JSON.stringify(value);
+      }
+      return String(value);
+    }
+
+    function normalizeSearch(value) {
+      return value.toLowerCase();
+    }
+
+    function truncate(value, size) {
+      const clean = String(value).replace(/\s+/g, " ").trim();
+      return clean.length > size ? clean.slice(0, size - 1) + "..." : clean;
+    }
+
+    function render() {
+      const query = normalizeSearch(searchInput.value.trim());
+      filteredRows = query ? rows.filter((row) => row.searchable.includes(query)) : rows.slice();
+
+      if (!filteredRows.some((row) => row.id === selectedId)) {
+        selectedId = filteredRows[0] ? filteredRows[0].id : null;
+      }
+
+      renderList();
+      renderDetail();
+      updateStats();
+    }
+
+    function renderList() {
+      entriesEl.textContent = "";
+
+      if (rows.length === 0) {
+        entriesEl.appendChild(emptyDropState());
+        return;
+      }
+
+      if (filteredRows.length === 0) {
+        const empty = document.createElement("div");
+        empty.className = "empty";
+        empty.textContent = "No matches";
+        entriesEl.appendChild(empty);
+        return;
+      }
+
+      const fragment = document.createDocumentFragment();
+      for (const row of filteredRows) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "entry";
+        if (row.id === selectedId) button.classList.add("is-active");
+        if (row.error) button.classList.add("has-error");
+        if (row.hasReadableContent) button.classList.add("has-content");
+        button.addEventListener("click", () => {
+          selectedId = row.id;
+          render();
+        });
+
+        const branch = document.createElement("span");
+        branch.className = "tree-branch";
+        branch.setAttribute("aria-hidden", "true");
+
+        const icon = document.createElement("span");
+        icon.className = "tree-icon";
+        icon.textContent = row.error ? "!" : row.hasReadableContent ? "◰" : "▣";
+        branch.appendChild(icon);
+
+        const content = document.createElement("span");
+        content.className = "entry-content";
+
+        const title = document.createElement("span");
+        title.className = "entry-title";
+        title.textContent = row.title;
+
+        const meta = document.createElement("span");
+        meta.className = "entry-meta";
+        meta.textContent = row.error ? row.error : row.meta;
+
+        content.append(title, meta);
+        button.append(branch, content);
+        fragment.appendChild(button);
+      }
+
+      entriesEl.appendChild(fragment);
+    }
+
+    function renderDetail() {
+      const row = rows.find((item) => item.id === selectedId);
+      detailBodyEl.textContent = "";
+
+      if (!row) {
+        detailTitleEl.textContent = rows.length ? "No match selected" : "No row selected";
+        detailLineEl.textContent = "";
+        const empty = document.createElement("div");
+        empty.className = "empty";
+        empty.textContent = rows.length ? "No matches" : "Open a file";
+        detailBodyEl.appendChild(empty);
+        return;
+      }
+
+      detailTitleEl.textContent = row.title;
+      detailLineEl.textContent = `Line ${row.line}`;
+
+      if (row.error) {
+        const error = document.createElement("p");
+        error.className = "error-text";
+        error.textContent = row.error;
+        const pre = document.createElement("pre");
+        pre.textContent = row.raw;
+        detailBodyEl.append(error, pre);
+        return;
+      }
+
+      const readableContent = findReadableContent(row.data);
+      if (readableContent) {
+        detailBodyEl.appendChild(renderContentView(readableContent.label, readableContent.text));
+      }
+
+      const fields = makeFieldSummary(row.data, readableContent ? readableContent.path[0] : null);
+      if (fields.length > 0) {
+        const grid = document.createElement("div");
+        grid.className = "field-grid";
+        for (const [key, value] of fields) {
+          const field = document.createElement("div");
+          field.className = "field";
+
+          const label = document.createElement("span");
+          label.className = "field-key";
+          label.textContent = key;
+
+          const output = document.createElement("span");
+          output.className = "field-value";
+          output.textContent = truncate(toPreview(value), 130);
+
+          field.append(label, output);
+          grid.appendChild(field);
+        }
+        detailBodyEl.appendChild(grid);
+      }
+
+      const pre = document.createElement("pre");
+      pre.textContent = JSON.stringify(row.data, null, 2);
+      detailBodyEl.appendChild(pre);
+    }
+
+    function findReadableContent(value) {
+      if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+
+      const direct = toContentText(value.content);
+      if (direct) return { label: "content", path: ["content"], text: direct };
+
+      if (value.message && typeof value.message === "object") {
+        const message = toContentText(value.message.content);
+        if (message) return { label: "message.content", path: ["message", "content"], text: message };
+      }
+
+      if (value.attachment && typeof value.attachment === "object") {
+        const attachment = toContentText(value.attachment.content);
+        if (attachment) return { label: "attachment.content", path: ["attachment", "content"], text: attachment };
+      }
+
+      return null;
+    }
+
+    function toContentText(value) {
+      if (typeof value === "string" && value.trim()) return value;
+      if (!Array.isArray(value)) return null;
+
+      const text = value
+        .map((item) => {
+          if (typeof item === "string") return item;
+          if (item && typeof item === "object") {
+            if (typeof item.text === "string") return item.text;
+            if (typeof item.content === "string") return item.content;
+          }
+          return "";
+        })
+        .filter(Boolean)
+        .join("\n\n");
+
+      return text.trim() ? text : null;
+    }
+
+    function renderContentView(label, text) {
+      const section = document.createElement("section");
+      section.className = "content-view";
+
+      const title = document.createElement("div");
+      title.className = "content-label";
+      title.textContent = label;
+
+      section.append(title, renderMarkdown(text));
+      return section;
+    }
+
+    function renderMarkdown(text) {
+      const root = document.createElement("div");
+      root.className = "markdown";
+
+      const lines = text.replace(/\r\n?/g, "\n").split("\n");
+      let index = 0;
+
+      while (index < lines.length) {
+        const line = lines[index];
+        const trimmed = line.trim();
+
+        if (!trimmed) {
+          index += 1;
+          continue;
+        }
+
+        if (trimmed.startsWith("```")) {
+          const codeLines = [];
+          index += 1;
+          while (index < lines.length && !lines[index].trim().startsWith("```")) {
+            codeLines.push(lines[index]);
+            index += 1;
+          }
+          if (index < lines.length) index += 1;
+
+          const pre = document.createElement("pre");
+          const code = document.createElement("code");
+          code.textContent = codeLines.join("\n");
+          pre.appendChild(code);
+          root.appendChild(pre);
+          continue;
+        }
+
+        const heading = trimmed.match(/^(#{1,6})\s+(.+)$/);
+        if (heading) {
+          const level = Math.min(6, heading[1].length);
+          const element = document.createElement(`h${level}`);
+          appendInline(element, heading[2]);
+          root.appendChild(element);
+          index += 1;
+          continue;
+        }
+
+        if (/^(-{3,}|\*{3,}|_{3,})$/.test(trimmed)) {
+          root.appendChild(document.createElement("hr"));
+          index += 1;
+          continue;
+        }
+
+        if (/^>\s?/.test(trimmed)) {
+          const blockquote = document.createElement("blockquote");
+          const parts = [];
+          while (index < lines.length && /^>\s?/.test(lines[index].trim())) {
+            parts.push(lines[index].trim().replace(/^>\s?/, ""));
+            index += 1;
+          }
+          appendInline(blockquote, parts.join("\n"));
+          root.appendChild(blockquote);
+          continue;
+        }
+
+        if (/^[-*+]\s+/.test(trimmed)) {
+          const list = document.createElement("ul");
+          while (index < lines.length && /^[-*+]\s+/.test(lines[index].trim())) {
+            const item = document.createElement("li");
+            appendInline(item, lines[index].trim().replace(/^[-*+]\s+/, ""));
+            list.appendChild(item);
+            index += 1;
+          }
+          root.appendChild(list);
+          continue;
+        }
+
+        if (/^\d+[.)]\s+/.test(trimmed)) {
+          const list = document.createElement("ol");
+          while (index < lines.length && /^\d+[.)]\s+/.test(lines[index].trim())) {
+            const item = document.createElement("li");
+            appendInline(item, lines[index].trim().replace(/^\d+[.)]\s+/, ""));
+            list.appendChild(item);
+            index += 1;
+          }
+          root.appendChild(list);
+          continue;
+        }
+
+        const paragraph = [];
+        while (index < lines.length && lines[index].trim() && !isMarkdownBlockStart(lines[index].trim())) {
+          paragraph.push(lines[index].trim());
+          index += 1;
+        }
+
+        const p = document.createElement("p");
+        appendInline(p, paragraph.join(" "));
+        root.appendChild(p);
+      }
+
+      return root;
+    }
+
+    function isMarkdownBlockStart(trimmed) {
+      return trimmed.startsWith("```")
+        || /^(#{1,6})\s+/.test(trimmed)
+        || /^(-{3,}|\*{3,}|_{3,})$/.test(trimmed)
+        || /^>\s?/.test(trimmed)
+        || /^[-*+]\s+/.test(trimmed)
+        || /^\d+[.)]\s+/.test(trimmed);
+    }
+
+    function appendInline(parent, text) {
+      const pattern = /(`[^`]+`|\*\*[^*]+\*\*|__[^_]+__)/g;
+      let cursor = 0;
+      let match;
+
+      while ((match = pattern.exec(text)) !== null) {
+        if (match.index > cursor) {
+          parent.appendChild(document.createTextNode(text.slice(cursor, match.index)));
+        }
+
+        const token = match[0];
+        const element = token.startsWith("`") ? document.createElement("code") : document.createElement("strong");
+        element.textContent = token.startsWith("`") ? token.slice(1, -1) : token.slice(2, -2);
+        parent.appendChild(element);
+        cursor = match.index + token.length;
+      }
+
+      if (cursor < text.length) {
+        parent.appendChild(document.createTextNode(text.slice(cursor)));
+      }
+    }
+
+    function makeFieldSummary(value, omittedKey) {
+      if (!value || typeof value !== "object" || Array.isArray(value)) return [];
+      return Object.entries(value).filter(([key]) => key !== omittedKey).slice(0, 12);
+    }
+
+    function updateStats() {
+      const errors = rows.filter((row) => row.error).length;
+      const rowText = `${filteredRows.length} / ${rows.length} rows`;
+      statsEl.textContent = errors ? `${rowText}, ${errors} errors` : rowText;
+    }
+
+    function emptyDropState() {
+      const wrapper = document.createElement("div");
+      wrapper.className = "empty";
+
+      const label = document.createElement("label");
+      label.className = "drop-target";
+      label.htmlFor = "fileInput";
+
+      const strong = document.createElement("strong");
+      strong.textContent = "Drop .jsonl file";
+
+      const span = document.createElement("span");
+      span.textContent = "or open one";
+
+      label.append(strong, span);
+      wrapper.appendChild(label);
+      return wrapper;
+    }
+
+    function setDragging(isDragging) {
+      for (const target of document.querySelectorAll(".drop-target")) {
+        target.classList.toggle("is-dragging", isDragging);
+      }
+    }
+  </script>
+</body>
+</html>
